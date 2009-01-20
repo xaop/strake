@@ -46,7 +46,8 @@ module Strake
     def calculate_checksum
       # File.exist?(snapshot_location) ? %x{md5 #{snapshot_location.inspect}}[/[0-9a-f]{32}/] : nil
       require 'digest/md5'
-      File.exist?(snapshot_location) ? Digest::MD5.hexdigest(File.read(snapshot_location)) : nil
+      file = File.join(RAILS_ROOT, snapshot_location)
+      File.exist?(file) ? Digest::MD5.hexdigest(File.read(file)) : nil
     end
     
     def one_line_description
@@ -64,7 +65,7 @@ module Strake
     end
     
     def script
-      @script ||= File.read(file)
+      @script ||= File.read(File.join(RAILS_ROOT, file))
     end
     
     def snapshot_location
@@ -76,14 +77,14 @@ module Strake
     end
     
     def create_snapshot
+      puts "creating database backup as #{snapshot_location}"
       user, password, database = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database])
       command = "mysqldump -u #{user} --password=#{(password || "").inspect} --add-drop-table --add-locks --extended-insert --lock-tables #{database} | gzip > #{snapshot_location.inspect}"
       system command
     end
     
     def execute_in_separate_shell
-      traced = $*.include?("--trace") || $*.include?("-t")
-      system "rake strake:__run__ n=#{@index} #{"--trace" if traced}"
+      system "rake strake:__run__ n=#{@index} #{"--trace" if $TRACE_STRAKES}"
       unless $?.exitstatus == 0
         puts "the call to task #{@file} seems to have failed"
         exit($?.exitstatus)
@@ -123,6 +124,10 @@ module Strake
       messages = []
       messages << "strake file name has changed" if task.file != self.file
       messages << "strake file has changed" if task.script != self.script
+      if task.script != self.script
+        p task.script
+        p self.script
+      end
       messages << "snapshot location has changed" if task.snapshot_location != self.snapshot_location
       messages << (self.actual_checksum ? "snapshot has changed" : "snapshot has been deleted") if self.actual_checksum != self.snapshot_checksum
       messages
@@ -146,7 +151,7 @@ module Strake
     end
 
     def tasks
-      @tasks ||= Dir['strake/tasks/*.rake'].map { |file| Strake::Task.new(file) }.inject([]) { |ary, task| ary[task.index] = task ; ary }
+      @tasks ||= Dir[File.join(RAILS_ROOT, 'strake/tasks/*.rake')].map { |file| Strake::Task.new(file[(RAILS_ROOT.length + 1)..-1]) }.inject([]) { |ary, task| ary[task.index] = task ; ary }
     end
     
     def each_task
@@ -226,7 +231,8 @@ module Strake
       end
     end
     
-    def execute_next(number = 1)
+    def execute_next(number, trace)
+      $TRACE_STRAKES = trace
       number.times do
         task = next_task or raise "no next task to execute"
         task.execute_in_separate_shell
@@ -234,7 +240,7 @@ module Strake
       end
     end
     
-    def restore_backup(number = 1)
+    def restore_backup(number)
       number.times do
         task = last_executed_task or raise "no backup to restore"
         task.restore_backup

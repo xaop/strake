@@ -16,18 +16,32 @@ namespace :strake do
 
   desc "Execute the next pending task. Use up2, up3, etc. to execute the next few tasks."
   task :up => :strake_environment do
-    Strake.execute_next
+    Strake.execute_next(1, false)
   end
 
   (2..20).each do |i|
     task :"up#{i}" => :strake_environment do
-      Strake.execute_next(i)
+      Strake.execute_next(i, false)
     end
+  end
+
+  namespace :t do
+
+    task :up => :strake_environment do
+      Strake.execute_next(1, true)
+    end
+
+    (2..20).each do |i|
+      task :"up#{i}" => :strake_environment do
+        Strake.execute_next(i, true)
+      end
+    end
+
   end
 
   desc "Execute the next pending task. Use up2, up3, etc. to execute the next few tasks."
   task :down => :strake_environment do
-    Strake.restore_backup
+    Strake.restore_backup(1)
   end
 
   (2..20).each do |i|
