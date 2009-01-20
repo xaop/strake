@@ -1,0 +1,247 @@
+module Strake
+
+  class Data < ActiveRecord::Base
+
+    set_table_name "strake_data"
+
+    def self.instance
+      @instance ||= find(:first)
+    end
+
+    serialize :my_data
+
+    def executed_tasks
+      my_data[:executed_tasks] ||= []
+    end
+    
+    def add_executed_task(task)
+      executed_tasks[task.index] = task
+      save!
+    end
+  
+  end
+
+  class AbstractTask
+
+    attr_reader :file
+    attr_reader :index
+    attr_reader :name
+    
+    def description
+      @description ||= begin
+        script = self.script
+        Object.new.instance_eval do
+          def strake_desc(desc)
+            @desc = desc
+            throw :desced
+          end
+          catch(:desced) do
+            eval script
+          end
+          @desc
+        end
+      end
+    end
+    
+    def calculate_checksum
+      # File.exist?(snapshot_location) ? %x{md5 #{snapshot_location.inspect}}[/[0-9a-f]{32}/] : nil
+      require 'digest/md5'
+      File.exist?(snapshot_location) ? Digest::MD5.hexdigest(File.read(snapshot_location)) : nil
+    end
+    
+    def one_line_description
+      description.sub(/\n.*/m, "...")
+    end
+    
+  end
+
+  class Task < AbstractTask
+    
+    def initialize(file)
+      @file = file
+      @index = file[/\d+/].to_i
+      @name = file[/\w+\.rake\z/][4..-6]
+    end
+    
+    def script
+      @script ||= File.read(file)
+    end
+    
+    def snapshot_location
+      @snapshot_location ||= "strake/snapshots/%03d_%s.sql.gz" % [@index, @name]
+    end
+    
+    def snapshot_checksum
+      @snapshot_checksum ||= calculate_checksum
+    end
+    
+    def create_snapshot
+      user, password, database = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database])
+      command = "mysqldump -u #{user} --password=#{(password || "").inspect} --add-drop-table --add-locks --extended-insert --lock-tables #{database} | gzip > #{snapshot_location.inspect}"
+      system command
+    end
+    
+    def execute_in_separate_shell
+      traced = $*.include?("--trace") || $*.include?("-t")
+      system "rake strake:__run__ n=#{@index} #{"--trace" if traced}"
+      unless $?.exitstatus == 0
+        puts "the call to task #{@file} seems to have failed"
+        exit($?.exitstatus)
+      end
+    end
+    
+    def execute
+      create_snapshot
+      require 'strake/definitions'
+      load @file
+      ActiveRecord::Base.transaction do
+        Rake::Task[@name].invoke
+        Strake::Data.instance.add_executed_task(ExecutedTask.new(self))
+      end
+    end
+    
+  end
+  
+  class ExecutedTask < Task
+
+    attr_reader :script
+    
+    def initialize(task)
+      @file = task.file
+      @index = task.index
+      @name = task.name
+      @script = task.script
+      @snapshot_location = task.snapshot_location
+      @snapshot_checksum = task.snapshot_checksum
+    end
+    
+    def actual_checksum
+      @actual_checksum ||= calculate_checksum
+    end
+    
+    def check_consistency(task)
+      messages = []
+      messages << "strake file name has changed" if task.file != self.file
+      messages << "strake file has changed" if task.script != self.script
+      messages << "snapshot location has changed" if task.snapshot_location != self.snapshot_location
+      messages << (self.actual_checksum ? "snapshot has changed" : "snapshot has been deleted") if self.actual_checksum != self.snapshot_checksum
+      messages
+    end
+    
+    def restore_backup
+      puts "restoring database to backup #{snapshot_location}"
+      raise "backup cannot be restored because it was changed behind my back" if self.actual_checksum != self.snapshot_checksum
+      user, password, database = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database])
+      command = "gunzip -c #{snapshot_location.inspect} | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
+      system command
+    end
+    
+  end
+
+  class << self
+
+    def reload
+      @tasks = nil
+      Strake::Data.instance.reload
+    end
+
+    def tasks
+      @tasks ||= Dir['strake/tasks/*.rake'].map { |file| Strake::Task.new(file) }.inject([]) { |ary, task| ary[task.index] = task ; ary }
+    end
+    
+    def each_task
+      tasks.each do |task|
+        yield task if task
+      end
+    end
+    
+    def executed_tasks
+      Strake::Data.instance.executed_tasks
+    end
+    
+    def each_executed_task
+      executed_tasks.each do |task|
+        yield task if task
+      end
+    end
+    
+    def next_task_index_to_create
+      (tasks.map { |t| t ? t.index : 0 }.max || 0) + 1
+    end
+    
+    def last_executed_task
+      executed_tasks.compact.last
+    end
+    
+    def new_task_file(name)
+      "strake/tasks/%03d_%s.rake" % [next_task_index_to_create, name]
+    end
+    
+    def cutoff
+      res = last_executed_task
+      res &&= res.index
+      res || 0
+    end
+    
+    def next_task
+      cutoff = self.cutoff
+      each_task do |task|
+        return task if task.index > cutoff
+      end
+      nil
+    end
+    
+    def print_list
+      each_task do |task|
+        puts "%03d - %s : %s" % [task.index, task.name, task.one_line_description]
+      end
+    end
+    
+    def print_status
+      puts "Executed :"
+      cutoff = self.cutoff
+      (1..cutoff).each do |index|
+        executed_task = executed_tasks[index]
+        task = tasks[index]
+        if executed_task
+          if task
+            puts "   %03d - %s : %s" % [executed_task.index, executed_task.name, executed_task.one_line_description]
+            executed_task.check_consistency(task).each do |message|
+              puts "    -> %s" % message
+            end
+          else
+            puts "   %03d - %s : %s" % [executed_task.index, executed_task.name, executed_task.one_line_description]
+            puts "     -> this task has been executed but has since disappeared"
+          end
+        elsif task
+          puts "  (%03d - %s : %s)" % [task.index, task.name, task.one_line_description]
+          puts "    -> this task has been inserted but was not executed on the database"
+        end
+      end
+      puts "Not yet executed :"
+      each_task do |task|
+        if task.index > cutoff
+          puts "   %03d - %s : %s" % [task.index, task.name, task.one_line_description]
+        end
+      end
+    end
+    
+    def execute_next(number = 1)
+      number.times do
+        task = next_task or raise "no next task to execute"
+        task.execute_in_separate_shell
+        reload
+      end
+    end
+    
+    def restore_backup(number = 1)
+      number.times do
+        task = last_executed_task or raise "no backup to restore"
+        task.restore_backup
+        reload
+      end
+    end
+    
+  end
+
+end

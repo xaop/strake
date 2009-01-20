@@ -1,0 +1,37 @@
+#!/usr/bin/env ruby
+
+require 'rubygems'
+require 'optparse'
+
+def error(message)
+  $stderr.puts message
+  exit 255
+end
+
+begin
+  OptionParser.new do |opts|
+    opts.banner = "Usage: strake [options] [outdir]"
+    
+    opts.on_tail("-h", "--help", "Show this message") do
+      puts opts
+      exit
+    end
+  end.parse!
+rescue
+  error($!.message)
+end
+
+dir, *rest = *$*
+
+rest.empty? or error("too many parameters")
+
+dir ||= "."
+
+require 'strake/installer'
+
+installer = Strake::Installer.new(dir)
+installer.create_rails_dir_structure
+installer.create_model
+installer.adapt_environment
+installer.create_tasks
+installer.create_plugin
