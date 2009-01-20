@@ -30,8 +30,8 @@ dir ||= "."
 require 'strake/installer'
 
 installer = Strake::Installer.new(dir)
-installer.create_rails_dir_structure
 installer.create_model
+installer.create_rails_dir_structure
 installer.adapt_environment
 installer.create_tasks
 installer.create_plugin

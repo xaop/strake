@@ -8,23 +8,27 @@ module Strake
       @rails_dir = File.expand_path(rails_dir)
     end
 
+    def create_model
+      unless File.exist?(relative('strake'))
+        Dir.chdir(@rails_dir) do
+          output = `script/generate migration create_strakes`
+          migration_file = output[/db\/migrate\/\d+_create_strakes.rb/]
+          edit_file(migration_file) do |data|
+            data.replace("require 'strake/migration'")
+          end
+          system 'rake db:migrate'
+        end
+      else
+        puts "Strake already seems to have been installed ; skipping"
+      end
+    end
+
     def create_rails_dir_structure
       create_dir("strake")
       create_dir("strake/tasks")
       create_dir("strake/snapshots")
     end
   
-    def create_model
-      Dir.chdir(@rails_dir) do
-        output = `script/generate migration create_strakes`
-        migration_file = output[/db\/migrate\/\d+_create_strakes.rb/]
-        edit_file(migration_file) do |data|
-          data.replace("require 'strake/migration'")
-        end
-        system 'rake db:migrate'
-      end
-    end
-
     def adapt_environment
       environment_file = "config/environment.rb"
       edit_file(environment_file) do |data|
@@ -45,7 +49,10 @@ module Strake
       create_dir('vendor/plugins/strake/generators/strake/templates')
       create_file('vendor/plugins/strake/generators/strake/strake_generator.rb', 'require "strake/strake_generator"')
       create_file('vendor/plugins/strake/init.rb', '')
-      create_file('vendor/plugins/strake/generators/strake/templates/strake.rake', get_file_content('templates/strake.rake'))
+      create_file('vendor/plugins/strake/generators/strake/templates/strake.erb', <<-END.gsub(/^ {8}/, ''))
+        <% require 'strake/templates' -%>
+        <%= Strake::Template.generate(template, data) %>
+      END
     end
 
   private

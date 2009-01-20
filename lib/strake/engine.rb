@@ -93,12 +93,19 @@ module Strake
     
     def execute
       create_snapshot
+      executed_task = ExecutedTask.new(self)
       require 'strake/definitions'
       load @file
       ActiveRecord::Base.transaction do
         Rake::Task[@name].invoke
-        Strake::Data.instance.add_executed_task(ExecutedTask.new(self))
+        Strake::Data.instance.add_executed_task(executed_task)
       end
+    rescue Exception => e
+      begin
+        executed_task.restore_backup if executed_task
+      rescue Exception
+      end
+      raise e
     end
     
   end
@@ -124,12 +131,8 @@ module Strake
       messages = []
       messages << "strake file name has changed" if task.file != self.file
       messages << "strake file has changed" if task.script != self.script
-      if task.script != self.script
-        p task.script
-        p self.script
-      end
       messages << "snapshot location has changed" if task.snapshot_location != self.snapshot_location
-      messages << (self.actual_checksum ? "snapshot has changed" : "snapshot has been deleted") if self.actual_checksum != self.snapshot_checksum
+      messages << (self.actual_checksumecksum ? "snapshot has changed" : "snapshot has been deleted") if self.actual_checksum != self.snapshot_checksum
       messages
     end
     
@@ -137,6 +140,8 @@ module Strake
       puts "restoring database to backup #{snapshot_location}"
       raise "backup cannot be restored because it was changed behind my back" if self.actual_checksum != self.snapshot_checksum
       user, password, database = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database])
+      command = "echo 'drop database #{database} ; create database #{database}' | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
+      system command
       command = "gunzip -c #{snapshot_location.inspect} | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
       system command
     end

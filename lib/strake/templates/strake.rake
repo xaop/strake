@@ -12,9 +12,9 @@
 # automatically executes your code in a database transaction.
 # The strake task also automatically loads the Rails environment.
 
-strake_desc "Description for strake task <%= name %>"
+strake_desc "Description for strake task <%= @name %>"
 
-strake_task :<%= name %> do
+strake_task :<%= @name %> do
   # Here goes your code.
   # You can add dependencies if you want, just know that they
   # will be executed outside the transaction.
