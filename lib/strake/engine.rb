@@ -130,7 +130,7 @@ module Strake
     def check_consistency(task)
       messages = []
       messages << "strake file name has changed" if task.file != self.file
-      messages << "strake file has changed" if task.script != self.script
+      messages << "strake file has changed" if task.script.gsub(/\s+/, ' ') != self.script.gsub(/\s+/, ' ')
       messages << "snapshot location has changed" if task.snapshot_location != self.snapshot_location
       messages << (self.actual_checksumecksum ? "snapshot has changed" : "snapshot has been deleted") if self.actual_checksum != self.snapshot_checksum
       messages
