@@ -245,10 +245,54 @@ module Strake
       end
     end
     
+    def execute_all(trace)
+      $TRACE_STRAKES = trace
+      while task = next_task
+        task.execute_in_separate_shell
+        reload
+      end
+    end
+    
     def restore_backup(number)
       number.times do
         task = last_executed_task or raise "no backup to restore"
         task.restore_backup
+        reload
+      end
+    end
+    
+    def restore_original_backup
+      while task = last_executed_task
+        task.restore_backup
+        reload
+      end
+    end
+    
+    def redo(i, trace)
+      $TRACE_STRAKES = trace
+      raise "no task #{i}" unless tasks[i]
+      while task = last_executed_task and task.index >= i
+        task.restore_backup
+        reload
+      end
+      while task = next_task and task.index < i
+        task.execute_in_separate_shell
+        reload
+      end
+      task = next_task
+      task.execute_in_separate_shell
+      reload
+    end
+    
+    def to(i, trace)
+      $TRACE_STRAKES = trace
+      raise "no task #{i}" unless tasks[i] || i == 0
+      while task = last_executed_task and task.index > i
+        task.restore_backup
+        reload
+      end
+      while task = next_task and task.index <= i
+        task.execute_in_separate_shell
         reload
       end
     end
