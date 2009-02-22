@@ -89,4 +89,9 @@ namespace :strake do
     task.execute
   end
 
+  desc "Restore the first strake backup and then remove strake from the database"
+  task :remove => :strake_environment do
+    Strake.remove_strake
+  end
+
 end

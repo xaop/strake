@@ -297,6 +297,18 @@ module Strake
       end
     end
     
+    def remove_strake
+      if task = last_executed_task
+        restore_original_backup
+      end
+      Thread.current[:strake_allow_migration] = true
+      my_migration = Integer(Dir["db/migrate/*_create_strakes.rb"].select { |f| /\/\d+_create_strakes\.rb\z/ === f }[0][/[1-9]\d*/])
+      migrate_to = Dir["db/migrate/*.rb"].map { |f| Integer(f[/[1-9]\d*/]) }.select { |v| v < my_migration }.max || 0
+      ENV["VERSION"] = migrate_to.to_s
+      Rake::Task['db:migrate'].invoke
+      Thread.current[:strake_allow_migration] = false
+    end
+    
   end
 
 end
