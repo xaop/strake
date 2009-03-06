@@ -92,6 +92,7 @@ module Strake
     end
     
     def execute
+      wd = Dir.getwd
       create_snapshot
       executed_task = ExecutedTask.new(self)
       require 'strake/definitions'
@@ -101,6 +102,7 @@ module Strake
         Strake::Data.instance.add_executed_task(executed_task)
       end
     rescue Exception => e
+      Dir.chdir(wd)
       begin
         executed_task.restore_backup if executed_task
       rescue Exception
@@ -140,10 +142,17 @@ module Strake
       puts "restoring database to backup #{snapshot_location}"
       raise "backup cannot be restored because it was changed behind my back" if self.actual_checksum != self.snapshot_checksum
       user, password, database = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database])
+      # I'd rather catch these and take action after the restore if needed,
+      # but unless I put IGNORE I cannot keep the child process from dying.
+      # Well, I don't know how anyway.
+      old_int = Signal.trap("INT", "IGNORE")
+      old_term = Signal.trap("TERM", "IGNORE")
       command = "echo 'drop database #{database} ; create database #{database}' | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
       system command
       command = "gunzip -c #{snapshot_location.inspect} | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
       system command
+      Signal.trap("INT", old_int)
+      Signal.trap("TERM", old_term)
     end
     
   end
