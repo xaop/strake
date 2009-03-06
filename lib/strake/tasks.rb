@@ -93,5 +93,9 @@ namespace :strake do
   task :remove => :strake_environment do
     Strake.remove_strake
   end
+  
+  task :dump_plain_data => :strake_environment do
+    Strake.dump_plain_data
+  end
 
 end

@@ -1,3 +1,5 @@
+require 'base64'
+
 module Strake
 
   class Data < ActiveRecord::Base
@@ -114,15 +116,23 @@ module Strake
   
   class ExecutedTask < Task
 
-    attr_reader :script
-    
     def initialize(task)
       @file = task.file
       @index = task.index
       @name = task.name
-      @script = task.script
+      @script = Base64.encode64(task.script)
       @snapshot_location = task.snapshot_location
       @snapshot_checksum = task.snapshot_checksum
+    end
+    
+    def script
+      @exploded_script ||= begin
+        if @script[/strake_task/]  # This should signal Ruby code
+          @script
+        else
+          Base64.decode64(@script)
+        end
+      end
     end
     
     def actual_checksum
@@ -132,7 +142,7 @@ module Strake
     def check_consistency(task)
       messages = []
       messages << "strake file name has changed" if task.file != self.file
-      messages << "strake file has changed" if task.script.gsub(/\s+/, ' ') != self.script.gsub(/\s+/, ' ')
+      messages << "strake file has changed" if task.script != self.script
       messages << "snapshot location has changed" if task.snapshot_location != self.snapshot_location
       messages << (self.actual_checksumecksum ? "snapshot has changed" : "snapshot has been deleted") if self.actual_checksum != self.snapshot_checksum
       messages
@@ -316,6 +326,11 @@ module Strake
       ENV["VERSION"] = migrate_to.to_s
       Rake::Task['db:migrate'].invoke
       Thread.current[:strake_allow_migration] = false
+    end
+    
+    def dump_plain_data
+      m = Class.new(ActiveRecord::Base) { set_table_name(:strake_data) }
+      puts m.find(:first).my_data
     end
     
   end
