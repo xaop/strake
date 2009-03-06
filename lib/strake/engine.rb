@@ -2,6 +2,9 @@ require 'base64'
 
 module Strake
 
+  REQUIRED_STRAKE_MODEL_VERSION = "0.0.1"
+  LATEST_STRAKE_MODEL_VERSION = "0.0.9"
+
   class Data < ActiveRecord::Base
 
     set_table_name "strake_data"
@@ -19,6 +22,19 @@ module Strake
     def add_executed_task(task)
       executed_tasks[task.index] = task
       save!
+    end
+    
+    before_save do |record|
+      version = record.respond_to?(:version) ? record.version : "0.0.1"
+      max_size = case version
+      when "0.0.1" : 2 ** 16 - 1
+      when "0.0.9" : 2 ** 24 - 1
+      else
+        raise "not yet #{version}"
+      end
+      if record.my_data.to_yaml.to_yaml.length > max_size
+        raise "You have hit a limitation of the installed version of Strake so I cannot execute this task for you. Run 'rake strake:update_strake' to update to a newer version."
+      end
     end
   
   end
@@ -79,10 +95,7 @@ module Strake
     end
     
     def create_snapshot
-      puts "creating database backup as #{snapshot_location}"
-      user, password, database = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database])
-      command = "mysqldump -u #{user} --password=#{(password || "").inspect} --add-drop-table --add-locks --extended-insert --lock-tables #{database} | gzip > #{snapshot_location.inspect}"
-      system command
+      Strake.create_snapshot(snapshot_location)
     end
     
     def execute_in_separate_shell
@@ -149,20 +162,8 @@ module Strake
     end
     
     def restore_backup
-      puts "restoring database to backup #{snapshot_location}"
       raise "backup cannot be restored because it was changed behind my back" if self.actual_checksum != self.snapshot_checksum
-      user, password, database = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database])
-      # I'd rather catch these and take action after the restore if needed,
-      # but unless I put IGNORE I cannot keep the child process from dying.
-      # Well, I don't know how anyway.
-      old_int = Signal.trap("INT", "IGNORE")
-      old_term = Signal.trap("TERM", "IGNORE")
-      command = "echo 'drop database #{database} ; create database #{database}' | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
-      system command
-      command = "gunzip -c #{snapshot_location.inspect} | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
-      system command
-      Signal.trap("INT", old_int)
-      Signal.trap("TERM", old_term)
+      Strake.load_snapshot(snapshot_location)
     end
     
   end
@@ -331,6 +332,92 @@ module Strake
     def dump_plain_data
       m = Class.new(ActiveRecord::Base) { set_table_name(:strake_data) }
       puts m.find(:first).my_data
+    end
+    
+    def load_snapshot(filename)
+      puts "restoring database to backup #{filename}"
+      user, password, database = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database])
+      # I'd rather catch these and take action after the restore if needed,
+      # but unless I put IGNORE I cannot keep the child process from dying.
+      # Well, I don't know how anyway.
+      old_int = Signal.trap("INT", "IGNORE")
+      old_term = Signal.trap("TERM", "IGNORE")
+      command = "echo 'drop database #{database} ; create database #{database}' | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
+      system command
+      command = "gunzip -c #{filename.inspect} | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
+      system command
+      Signal.trap("INT", old_int)
+      Signal.trap("TERM", old_term)
+    end
+    
+    def create_snapshot(filename)
+      puts "creating database backup as #{filename}"
+      user, password, database = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database])
+      command = "mysqldump -u #{user} --password=#{(password || "").inspect} --add-drop-table --add-locks --extended-insert --lock-tables #{database} | gzip > #{filename.inspect}"
+      system command
+    end
+    
+    def update_strake
+      if current_strake_model_version == parse_version(LATEST_STRAKE_MODEL_VERSION)
+        puts "Strake is up to date"
+      else
+        puts "Updating strake version #{LATEST_STRAKE_MODEL_VERSION}"
+        snapshot_file = "strake/snapshots/strake_update.sql.gz"
+        create_snapshot(snapshot_file)
+        begin
+          do_update_strake
+        rescue Exception => e
+          load_snapshot(snapshot_file)
+          raise
+        end
+      end
+    end
+    
+    def current_strake_model_version
+      if data = Strake::Data.instance
+        if data.respond_to?(:version)
+          parse_version(data.version)
+        else
+          parse_version("0.0.1")
+        end
+      end
+    end
+    
+    def parse_version(version_string)
+      version_string.scan(/\d+/).map { |n| n.to_i }
+    end
+    
+    def print_current_strake_model_version
+      puts current_strake_model_version.join(".")
+    end
+    
+    def do_update_strake
+      current_version = current_strake_model_version
+      case current_version
+      when parse_version("0.0.1")
+        data = Class.new(ActiveRecord::Base) { set_table_name "strake_data" }.find(:first)
+        raw_data = data.my_data
+        if raw_data.length == 2 ** 16 - 1
+          raise "You have been hit by a bug in Strake. You will need to run 'rake strake:down' once to be in a safe state."
+        end
+        require 'strake/migration'
+        begin
+          Thread.current[:strake_allow_migration] = true
+          CreateStrakes.migrate(:down)
+          CreateStrakes.migrate(:up)
+        ensure
+          Thread.current[:strake_allow_migration] = false
+        end
+        data.reload
+        data.update_attributes(:my_data => raw_data)
+        reload
+        print_status
+      when nil
+        raise "Strake's migration has not run yet"
+      else
+        raise "not yet #{current_strake_model_version.join(".")}"
+      end
+
     end
     
   end

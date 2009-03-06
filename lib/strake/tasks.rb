@@ -97,5 +97,26 @@ namespace :strake do
   task :dump_plain_data => :strake_environment do
     Strake.dump_plain_data
   end
+  
+  task :print_current_strake_model_version => :strake_environment do
+    Strake.print_current_strake_model_version
+  end
+  
+  desc "Load a specific snapshot file"
+  task :load_snapshot => :strake_environment do
+    file = ENV['f'] or raise "no file (f) specified"
+    Strake.load_snapshot(file)
+  end
+
+  desc "Create a specific snapshot file"
+  task :create_snapshot => :strake_environment do
+    file = ENV['f'] or raise "no file (f) specified"
+    Strake.create_snapshot(file)
+  end
+  
+  desc "Update strake database model to the latest version"
+  task :update_strake => :strake_environment do
+    Strake.update_strake
+  end
 
 end

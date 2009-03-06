@@ -22,7 +22,7 @@ module Strake
         puts "Strake already seems to have been installed ; skipping"
       end
     end
-
+    
     def create_rails_dir_structure
       create_dir("strake")
       create_dir("strake/tasks")
