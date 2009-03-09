@@ -99,7 +99,7 @@ module Strake
     end
     
     def execute_in_separate_shell
-      system "rake strake:__run__ n=#{@index} #{"--trace" if $TRACE_STRAKES}"
+      system "rake strake:#{"v:" if $VERBOSE_STRAKES}__run__ n=#{@index} #{"--trace" if $TRACE_STRAKES}"
       unless $?.exitstatus == 0
         puts "the call to task #{@file} seems to have failed"
         exit($?.exitstatus)
@@ -345,16 +345,18 @@ module Strake
       ActiveRecord::Base.connection.instance_eval { @connection }.list_tables.each do |table|
         ActiveRecord::Base.connection.execute("DROP TABLE #{table};")
       end
-      command = "gunzip -c #{filename.inspect} | mysql #{mysql_params}"
+      command = "gunzip -c #{filename.inspect} > #{filename.sub(/\.gz\z/, "")}"
       run_command command
+      run_command "mysql #{mysql_params} < #{filename.sub(/\.gz\z/, "")}"
       Signal.trap("INT", old_int)
       Signal.trap("TERM", old_term)
     end
     
     def create_snapshot(filename)
       puts "creating database backup as #{filename}"
-      command = "mysqldump --add-drop-table --add-locks --extended-insert --lock-tables #{mysql_params} | gzip > #{filename.inspect}"
+      command = "mysqldump --add-drop-table --add-locks --extended-insert --lock-tables #{mysql_params} > #{filename.sub(/\.gz\z/, "").inspect}"
       run_command command
+      run_command "gzip -f #{filename.sub(/\.gz\z/, "").inspect}"
     end
     
     def mysql_params
@@ -370,6 +372,7 @@ module Strake
     end
     
     def run_command(command)
+      puts command if $VERBOSE_STRAKES
       system command
       unless $?.exitstatus == 0
         raise "command #{command.inspect} exited with an exit status of #{$?.exitstatus}"

@@ -10,18 +10,21 @@ end
 
 def strake_trace_or_not(trace, &blk)
   if trace
-    yield
-  else
     strake_no_descriptions do
       namespace :t, &blk
     end
+  else
+    yield
   end
 end
 
-def strake_verbose_or_not(&blk)
-  yield
-  strake_no_descriptions do
-    namespace :v, &blk
+def strake_verbose_or_not(verbose, &blk)
+  if verbose
+    strake_no_descriptions do
+      namespace :v, &blk
+    end
+  else
+    yield
   end
 end
 
@@ -38,14 +41,6 @@ namespace :strake do
     require 'strake/engine'
   end
 
-  # Not for public use
-  task :__run__ => :strake_environment do
-    n = ENV["n"] or raise "no n specified"
-    n = Integer(n)
-    task = Strake.tasks[n] or raise "task #{n} not found"
-    task.execute
-  end
-
   desc "List strake tasks (DEPRECATED, use rake strake:status)"
   task :list => :strake_environment do
     Strake.print_list
@@ -56,105 +51,131 @@ namespace :strake do
     Strake.print_status
   end
 
-  strake_verbose_or_not do |verbose|
+  [true, false].each do |verbose|
 
-    [true, false].each do |trace|
+    strake_verbose_or_not(verbose) do
 
-      strake_trace_or_not(trace) do # This is somewhat weird, but that is because 1.8.6 doesn't have instance_exec
+      # Not for public use
+      task :__run__ => :strake_environment do
+        n = ENV["n"] or raise "no n specified"
+        n = Integer(n)
+        $DEBUG = $VERBOSE_STRAKES = verbose
+        task = Strake.tasks[n] or raise "task #{n} not found"
+        task.execute
+      end
 
-        strake_desc "Execute the next pending task. Use up2, up3, etc. to execute the next few tasks."
-        task :up => :strake_environment do
-          Strake.execute_next(1, trace)
-        end
+      [true, false].each do |trace|
 
-        (2..STRAKE_COUNT).each do |i|
-          task :"up#{i}" => :strake_environment do
-            Strake.execute_next(i, trace)
+        strake_trace_or_not(trace) do # This is somewhat weird, but that is because 1.8.6 doesn't have instance_exec
+
+          strake_desc "Execute the next pending task. Use up2, up3, etc. to execute the next few tasks."
+          task :up => :strake_environment do
+            $DEBUG = $VERBOSE_STRAKES = verbose
+            Strake.execute_next(1, trace)
           end
-        end
 
-        strake_desc "Execute 'rake strake:up' count times"
-        task :"up<count>" => :strake_environment do
-          puts "Please replace <count> with a number of tasks"
-        end
-
-        strake_desc "Execute all the pending tasks"
-        task :all_up => :strake_environment do
-          Strake.execute_all(trace)
-        end
-
-        (STRAKE_INDEXES + [0]).each do |i|
-          task :"to_#{i}" => :strake_environment do
-            Strake.to(i, trace)
+          (2..STRAKE_COUNT).each do |i|
+            task :"up#{i}" => :strake_environment do
+              $DEBUG = $VERBOSE_STRAKES = verbose
+              Strake.execute_next(i, trace)
+            end
           end
-        end
 
-        strake_desc "Go to the state just after executing strake <index>, executing strakes or restoring a backup as needed"
-        task :"to_<index>" => :strake_environment do
-          puts "Please replace <index> with the number of a strake task"
-        end
-
-        strake_desc "Redo the last executed strake"
-        task :redo => :strake_environment do
-          Strake.redo(nil, trace)
-        end
-
-        STRAKE_INDEXES.each do |i|
-          task :"redo_#{i}" => :strake_environment do
-            Strake.redo(i, trace)
+          strake_desc "Execute 'rake strake:up' count times"
+          task :"up<count>" => :strake_environment do
+            puts "Please replace <count> with a number of tasks"
           end
-        end
 
-        strake_desc "Reexecute strake <index>, executing strakes or restoring a backup as needed to get to the state before strake <index>"
-        task :"redo_<index>" => :strake_environment do
-          puts "Please replace <index> with the number of a strake task"
+          strake_desc "Execute all the pending tasks"
+          task :all_up => :strake_environment do
+            $DEBUG = $VERBOSE_STRAKES = verbose
+            Strake.execute_all(trace)
+          end
+
+          (STRAKE_INDEXES + [0]).each do |i|
+            task :"to_#{i}" => :strake_environment do
+              $DEBUG = $VERBOSE_STRAKES = verbose
+              Strake.to(i, trace)
+            end
+          end
+
+          strake_desc "Go to the state just after executing strake <index>, executing strakes or restoring a backup as needed"
+          task :"to_<index>" => :strake_environment do
+            puts "Please replace <index> with the number of a strake task"
+          end
+
+          strake_desc "Redo the last executed strake"
+          task :redo => :strake_environment do
+            $DEBUG = $VERBOSE_STRAKES = verbose
+            Strake.redo(nil, trace)
+          end
+
+          STRAKE_INDEXES.each do |i|
+            task :"redo_#{i}" => :strake_environment do
+              $DEBUG = $VERBOSE_STRAKES = verbose
+              Strake.redo(i, trace)
+            end
+          end
+
+          strake_desc "Reexecute strake <index>, executing strakes or restoring a backup as needed to get to the state before strake <index>"
+          task :"redo_<index>" => :strake_environment do
+            puts "Please replace <index> with the number of a strake task"
+          end
+
         end
 
       end
 
-    end
-
-    strake_desc "Restore the backup made before the last executed strake. Use down2, down3, etc. to restore earlier backups"
-    task :down => :strake_environment do
-      Strake.restore_backup(1)
-    end
-
-    (2..STRAKE_COUNT).each do |i|
-      task :"down#{i}" => :strake_environment do
-        Strake.restore_backup(i)
+      strake_desc "Restore the backup made before the last executed strake. Use down2, down3, etc. to restore earlier backups"
+      task :down => :strake_environment do
+        $DEBUG = $VERBOSE_STRAKES = verbose
+        Strake.restore_backup(1)
       end
-    end
 
-    strake_desc "Execute 'rake strake:up' count times"
-    task :"down<count>" => :strake_environment do
-      puts "Please replace <count> with a number of tasks"
-    end
-  
-    strake_desc "Restore the backup made before any strake was executed."
-    task :all_down => :strake_environment do
-      Strake.restore_original_backup
-    end
+      (2..STRAKE_COUNT).each do |i|
+        task :"down#{i}" => :strake_environment do
+          $DEBUG = $VERBOSE_STRAKES = verbose
+          Strake.restore_backup(i)
+        end
+      end
 
-    strake_desc "Restore the first strake backup and then remove strake from the database"
-    task :remove => :strake_environment do
-      Strake.remove_strake
-    end
+      strake_desc "Execute 'rake strake:up' count times"
+      task :"down<count>" => :strake_environment do
+        puts "Please replace <count> with a number of tasks"
+      end
   
-    strake_desc "Load a specific snapshot file"
-    task :load_snapshot => :strake_environment do
-      file = ENV['f'] or raise "no file (f) specified"
-      Strake.load_snapshot(file)
-    end
+      strake_desc "Restore the backup made before any strake was executed."
+      task :all_down => :strake_environment do
+        $DEBUG = $VERBOSE_STRAKES = verbose
+        Strake.restore_original_backup
+      end
 
-    strake_desc "Create a specific snapshot file"
-    task :create_snapshot => :strake_environment do
-      file = ENV['f'] or raise "no file (f) specified"
-      Strake.create_snapshot(file)
-    end
+      strake_desc "Restore the first strake backup and then remove strake from the database"
+      task :remove => :strake_environment do
+        $DEBUG = $VERBOSE_STRAKES = verbose
+        Strake.remove_strake
+      end
   
-    strake_desc "Update strake database model to the latest version"
-    task :update_strake => :strake_environment do
-      Strake.update_strake
+      strake_desc "Load a specific snapshot file"
+      task :load_snapshot => :strake_environment do
+        file = ENV['f'] or raise "no file (f) specified"
+        $DEBUG = $VERBOSE_STRAKES = verbose
+        Strake.load_snapshot(file)
+      end
+
+      strake_desc "Create a specific snapshot file"
+      task :create_snapshot => :strake_environment do
+        file = ENV['f'] or raise "no file (f) specified"
+        $DEBUG = $VERBOSE_STRAKES = verbose
+        Strake.create_snapshot(file)
+      end
+  
+      strake_desc "Update strake database model to the latest version"
+      task :update_strake => :strake_environment do
+        $DEBUG = $VERBOSE_STRAKES = verbose
+        Strake.update_strake
+      end
+  
     end
   
   end
