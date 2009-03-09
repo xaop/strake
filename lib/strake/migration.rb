@@ -7,7 +7,7 @@ class CreateStrakes < ActiveRecord::Migration
       t.column "version", :string, :limit => 8
     end
     Strake::Data.reset_column_information
-    Strake::Data.create!(:my_data => {}, :version => File.read(File.join(File.dirname(__FILE__), '../../VERSION')).strip)
+    Strake::Data.create!(:my_data => {}, :version => "0.0.9")
   end
 
   def self.down
