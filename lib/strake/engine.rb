@@ -21,6 +21,7 @@ module Strake
     
     def add_executed_task(task)
       executed_tasks[task.index] = task
+      self.my_data_will_change! if self.respond_to?(:my_data_will_change!)
       save!
     end
     
@@ -112,10 +113,8 @@ module Strake
       executed_task = ExecutedTask.new(self)
       require 'strake/definitions'
       load @file
-      ActiveRecord::Base.transaction do
-        Rake::Task[@name].invoke
-        Strake::Data.instance.add_executed_task(executed_task)
-      end
+      Rake::Task[@name].invoke
+      Strake::Data.instance.add_executed_task(executed_task)
     rescue Exception => e
       Dir.chdir(wd)
       begin
