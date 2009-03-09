@@ -342,19 +342,38 @@ module Strake
       # Well, I don't know how anyway.
       old_int = Signal.trap("INT", "IGNORE")
       old_term = Signal.trap("TERM", "IGNORE")
-      command = "echo 'drop database #{database} ; create database #{database}' | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
-      system command
-      command = "gunzip -c #{filename.inspect} | mysql -u #{user} --password=#{(password || "").inspect} #{database}"
-      system command
+      ActiveRecord::Base.connection.instance_eval { @connection }.list_tables.each do |table|
+        ActiveRecord::Base.connection.execute("DROP TABLE #{table};")
+      end
+      command = "gunzip -c #{filename.inspect} | mysql #{mysql_params}"
+      run_command command
       Signal.trap("INT", old_int)
       Signal.trap("TERM", old_term)
     end
     
     def create_snapshot(filename)
       puts "creating database backup as #{filename}"
-      user, password, database = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database])
-      command = "mysqldump -u #{user} --password=#{(password || "").inspect} --add-drop-table --add-locks --extended-insert --lock-tables #{database} | gzip > #{filename.inspect}"
+      command = "mysqldump --add-drop-table --add-locks --extended-insert --lock-tables #{mysql_params} | gzip > #{filename.inspect}"
+      run_command command
+    end
+    
+    def mysql_params
+      user, password, database, host, socket = ActiveRecord::Base.configurations[RAILS_ENV].values_at(*%w[username password database host socket])
+      extra_params = if host
+        "-h #{host.inspect} "
+      elsif socket
+        "--socket #{socket.inspect} "
+      else
+        ""
+      end
+      extra_params + "-u #{user} --password=#{(password || "").inspect} #{database}"
+    end
+    
+    def run_command(command)
       system command
+      unless $?.exitstatus == 0
+        raise "command #{command.inspect} exited with an exit status of #{$?.exitstatus}"
+      end
     end
     
     def update_strake
@@ -389,6 +408,10 @@ module Strake
     
     def print_current_strake_model_version
       puts current_strake_model_version.join(".")
+    end
+    
+    def print_version
+      puts File.read(File.join(File.dirname(__FILE__), "../../VERSION")).strip
     end
     
     def do_update_strake
