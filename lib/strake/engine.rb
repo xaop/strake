@@ -55,7 +55,10 @@ module Strake
             throw :desced
           end
           catch(:desced) do
-            eval script
+            begin
+              eval script
+            rescue Exception => e
+            end
           end
           @desc || "<ERROR>"
         end
