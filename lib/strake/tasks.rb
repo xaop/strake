@@ -176,6 +176,12 @@ namespace :strake do
         Strake.update_strake
       end
   
+      strake_desc "Update strake database model to the latest version without checking that it is in a state where corruption can occur"
+      task :force_update_strake => :strake_environment do
+        $DEBUG = $VERBOSE_STRAKES = verbose
+        Strake.update_strake(true)
+      end
+  
     end
   
   end

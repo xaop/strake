@@ -378,7 +378,7 @@ module Strake
       end
     end
     
-    def update_strake
+    def update_strake(force = false)
       if current_strake_model_version == parse_version(LATEST_STRAKE_MODEL_VERSION)
         puts "Strake is up to date"
       else
@@ -386,7 +386,7 @@ module Strake
         snapshot_file = "strake/snapshots/strake_update.sql.gz"
         create_snapshot(snapshot_file)
         begin
-          do_update_strake
+          do_update_strake(force)
         rescue Exception => e
           load_snapshot(snapshot_file)
           raise
@@ -416,13 +416,13 @@ module Strake
       puts File.read(File.join(File.dirname(__FILE__), "../../VERSION")).strip
     end
     
-    def do_update_strake
+    def do_update_strake(force)
       current_version = current_strake_model_version
       case current_version
       when parse_version("0.0.1")
         data = Class.new(ActiveRecord::Base) { set_table_name "strake_data" }.find(:first)
         raw_data = data.my_data
-        if raw_data.length == 2 ** 16 - 1
+        if !force && raw_data.length == 2 ** 16 - 1
           raise "You have been hit by a bug in Strake. You will need to run 'rake strake:down' once to be in a safe state."
         end
         require 'strake/migration'
