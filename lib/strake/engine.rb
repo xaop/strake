@@ -57,7 +57,7 @@ module Strake
           catch(:desced) do
             eval script
           end
-          @desc
+          @desc || "<ERROR>"
         end
       end
     end
