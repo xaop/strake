@@ -1,4 +1,5 @@
 require 'base64'
+require 'tempfile'
 
 module Strake
 
@@ -347,9 +348,12 @@ module Strake
       ActiveRecord::Base.connection.instance_eval { @connection }.list_tables.each do |table|
         ActiveRecord::Base.connection.execute("DROP TABLE #{table};")
       end
-      command = "gunzip -c #{filename.inspect} > #{filename.sub(/\.gz\z/, "")}"
+      tf = Tempfile.new("strake.dump")
+      tf.close
+      command = "gunzip -c #{filename.inspect} >> #{tf.path}"
       run_command command
-      run_command "mysql #{mysql_params} < #{filename.sub(/\.gz\z/, "")}"
+      run_command "mysql #{mysql_params} < #{tf.path}"
+      tf.delete
       Signal.trap("INT", old_int)
       Signal.trap("TERM", old_term)
     end
