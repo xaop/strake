@@ -139,7 +139,7 @@ namespace :strake do
         end
       end
 
-      strake_desc "Execute 'rake strake:up' count times"
+      strake_desc "Execute 'rake strake:down' count times"
       task :"down<count>" => :strake_environment do
         puts "Please replace <count> with a number of tasks"
       end
