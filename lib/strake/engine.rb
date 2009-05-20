@@ -104,7 +104,7 @@ module Strake
     end
     
     def execute_in_separate_shell
-      system "rake strake:#{"v:" if $VERBOSE_STRAKES}__run__ n=#{@index} #{"--trace" if $TRACE_STRAKES}"
+      system "rake strake:#{"v:" if $VERBOSE_STRAKES}__run__ n=#{@index}"
       unless $?.exitstatus == 0
         puts "the call to task #{@file} seems to have failed"
         exit($?.exitstatus)
@@ -120,12 +120,15 @@ module Strake
       Rake::Task[@name].invoke
       Strake::Data.instance.add_executed_task(executed_task)
     rescue Exception => e
+      puts "strake aborted, exception thrown of type #{e.class}"
+      puts e.message
+      puts e.backtrace.join("\n")
+      
       Dir.chdir(wd)
       begin
         executed_task.restore_backup if executed_task
       rescue Exception
       end
-      raise e
     end
     
   end
@@ -259,8 +262,7 @@ module Strake
       end
     end
     
-    def execute_next(number, trace)
-      $TRACE_STRAKES = trace
+    def execute_next(number)
       number.times do
         task = next_task or raise "no next task to execute"
         task.execute_in_separate_shell
@@ -268,8 +270,7 @@ module Strake
       end
     end
     
-    def execute_all(trace)
-      $TRACE_STRAKES = trace
+    def execute_all()
       while task = next_task
         task.execute_in_separate_shell
         reload
@@ -291,8 +292,7 @@ module Strake
       end
     end
     
-    def redo(i, trace)
-      $TRACE_STRAKES = trace
+    def redo(i)
       raise "no task #{i}" unless tasks[i]
       while task = last_executed_task and task.index >= i
         task.restore_backup
@@ -307,8 +307,7 @@ module Strake
       reload
     end
     
-    def to(i, trace)
-      $TRACE_STRAKES = trace
+    def to(i)
       raise "no task #{i}" unless tasks[i] || i == 0
       while task = last_executed_task and task.index > i
         task.restore_backup
