@@ -129,6 +129,8 @@ module Strake
         executed_task.restore_backup if executed_task
       rescue Exception
       end
+      exit(1) # Needed for execute_in_separate_shell to know that this task has failed
+              # In my opinion it would be better to let execute_..._shell check that an executed_task was added
     end
     
   end
