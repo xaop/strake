@@ -207,8 +207,8 @@ module Strake
       (tasks.map { |t| t ? t.index : 0 }.max || 0) + 1
     end
     
-    def last_executed_task
-      executed_tasks.compact.last
+    def last_executed_task(n = 1)
+      executed_tasks.compact[-n]
     end
     
     def new_task_file(name)
@@ -280,11 +280,19 @@ module Strake
     end
     
     def restore_backup(number)
-      number.times do
-        task = last_executed_task or raise "no backup to restore"
-        task.restore_backup
-        reload
+      # number.times do
+      #   task = last_executed_task or raise "no backup to restore"
+      #   task.restore_backup
+      #   reload
+      # end
+      (0..number).to_a.reverse_each do |i|
+        if task = last_executed_task(i)
+          task.restore_backup
+          reload
+          return
+        end
       end
+      raise "no backup to restore"
     end
     
     def restore_original_backup
@@ -294,24 +302,18 @@ module Strake
       end
     end
     
-    def redo(i)
-      raise "no task #{i}" unless tasks[i]
-      while task = last_executed_task and task.index >= i
-        task.restore_backup
-        reload
+    def move_before_or_on_task(i)
+      # while task = last_executed_task and task.index > i
+      #   task.restore_backup
+      #   reload
+      # end
+      n = 1
+      while task = last_executed_task(n) and task.index > i
+        n += 1
       end
-      while task = next_task and task.index < i
-        task.execute_in_separate_shell
-        reload
-      end
-      task = next_task
-      task.execute_in_separate_shell
-      reload
-    end
-    
-    def to(i)
-      raise "no task #{i}" unless tasks[i] || i == 0
-      while task = last_executed_task and task.index > i
+      n = n - 1
+      if n > 0
+        task = last_executed_task(n)
         task.restore_backup
         reload
       end
@@ -319,6 +321,19 @@ module Strake
         task.execute_in_separate_shell
         reload
       end
+    end
+    
+    def redo(i)
+      raise "no task #{i}" unless tasks[i]
+      move_before_or_on_task(i - 1)
+      task = next_task
+      task.execute_in_separate_shell
+      reload
+    end
+    
+    def to(i)
+      raise "no task #{i}" unless tasks[i] || i == 0
+      move_before_or_on_task(i)
     end
     
     def remove_strake

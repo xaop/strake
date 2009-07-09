@@ -4,13 +4,14 @@ class StrakeGenerator < Rails::Generator::Base
     require 'strake/engine'
 
     super
-    if args.length == 2 && args.first == "strake"
-      @template = "strake.rake"
-      @name = args.last
-      @data = { :name => @name }
-    elsif args.length == 2 && args.first == "migration"
+    if args.length == 2 && args.first == "migration"
       @template = "migration.rake"
       version = Integer(args.last) rescue usage
+      @name = "migrate_to_#{version}"
+      @data = { :version => version, :name => @name }
+    elsif args.length == 1 && args.first == "migration"
+      @template = "migration.rake"
+      version = Dir["db/migrate/*.rb"].map { |f| f[/\Adb\/migrate\/(\d+)/, 1].to_i }.max
       @name = "migrate_to_#{version}"
       @data = { :version => version, :name => @name }
     elsif args.length == 1
@@ -35,7 +36,7 @@ protected
   def banner
     <<-END
 Usage: #{$0} strake NAME
-       #{$0} strake strake NAME
+       #{$0} strake migration
        #{$0} strake migration VERSION
 END
   end
