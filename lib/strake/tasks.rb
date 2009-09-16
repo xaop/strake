@@ -121,9 +121,10 @@ namespace :strake do
       STRAKE_INDEXES.each do |i|
         task :"redo_from_#{i}" => :strake_environment do
           $DEBUG = $VERBOSE_STRAKES = verbose
+          current = Strake.last_executed_task.index
           Strake.redo(i)
           Strake.reload
-          Strake.execute_all
+          Strake.to(current)
         end
       end
 
