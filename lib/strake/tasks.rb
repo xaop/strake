@@ -118,6 +118,20 @@ namespace :strake do
         puts "Please replace <index> with the number of a strake task"
       end
 
+      STRAKE_INDEXES.each do |i|
+        task :"redo_from_#{i}" => :strake_environment do
+          $DEBUG = $VERBOSE_STRAKES = verbose
+          Strake.redo(i)
+          Strake.reload
+          Strake.execute_all
+        end
+      end
+
+      strake_desc "Reexecute strake <index>, executing strakes or restoring a backup as needed to get to the state before strake <index>"
+      task :"redo_from_<index>" => :strake_environment do
+        puts "Please replace <index> with the number of a strake task"
+      end
+
       strake_desc "Restore the backup made before the last executed strake. Use down2, down3, etc. to restore earlier backups"
       task :down => :strake_environment do
         $DEBUG = $VERBOSE_STRAKES = verbose
